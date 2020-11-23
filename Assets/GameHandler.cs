@@ -1,5 +1,4 @@
-﻿
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -13,6 +12,8 @@ using UnityEngine;
 
 public class GameHandler : MonoBehaviour
 {
+
+    public static int roundNumber = -2; // Minus means tutorial, 0 means first round etc.
     private float MAX_ROTATION = 25;
     public GameObject RightController;
     public GameObject LeftController;
@@ -22,18 +23,36 @@ public class GameHandler : MonoBehaviour
     public GameObject gameCourt2;
     public GameObject gameCourt3;
 
+    public GameObject gameCourtT1; 
+    public GameObject gameCourtT2;
+
     public TextMesh rightDebug;
     public TextMesh leftDebug;
 
     private OrderedDictionary rounds = new OrderedDictionary();
-    private int actualRound = 0;
+    private int actualRound = -2;
     private GameObject actualGameCourt;
     private Vector3 gameCourtInitialPosition = new Vector3(0.0f, -4.0f, 7.0f);
 
     private ControllerWrapper rightControllerWrapper;
     private ControllerWrapper leftControllerWrapper;
 
-    IEnumerator Log() {
+    IEnumerator Game() {
+        actualGameCourt = Instantiate(gameCourt1, gameCourtInitialPosition, Quaternion.identity);
+        resetBall();
+        while (true) {
+            rightDebug.text = rightControllerWrapper.getPosition().ToString();
+            leftDebug.text = leftControllerWrapper.getPosition().ToString();
+
+            updateRotation(rightControllerWrapper);
+            updateRotation(leftControllerWrapper);
+
+            yield return new WaitForSeconds(.05f);
+        }
+    }
+
+    IEnumerator Tutorial() {
+        actualGameCourt = Instantiate(gameCourtT1, gameCourtInitialPosition, Quaternion.identity);
         while (true) {
             rightDebug.text = rightControllerWrapper.getPosition().ToString();
             leftDebug.text = leftControllerWrapper.getPosition().ToString();
@@ -51,13 +70,11 @@ public class GameHandler : MonoBehaviour
         rounds.Add(0, gameCourt1);
         rounds.Add(1, gameCourt2);
         rounds.Add(2, gameCourt3);
-        
-        actualGameCourt = Instantiate(gameCourt1, gameCourtInitialPosition, Quaternion.identity);
 
         rightControllerWrapper = new ControllerWrapper(RightController, "right");
         leftControllerWrapper = new ControllerWrapper(LeftController, "left");
 
-        StartCoroutine("Log");
+        StartCoroutine("Tutorial");
 
     }
 
@@ -75,7 +92,26 @@ public class GameHandler : MonoBehaviour
             resetBall();
         } else {
         }
-        checkIfGameOver();
+        if(actualRound >= 0) {
+            checkIfGameOver();
+        } else {
+            checkTutorial();
+        }
+    }
+
+    void checkTutorial() {
+        if(GameHandler.roundNumber != actualRound) {
+            actualRound = GameHandler.roundNumber;
+            Destroy(actualGameCourt);
+
+            if (actualRound == 0) {
+                StopCoroutine("Tutorial");
+                StartCoroutine("Game");
+            } else {
+                actualGameCourt = Instantiate(gameCourtT2, gameCourtInitialPosition, Quaternion.identity);
+                resetBall();
+            }
+        }
     }
 
     void updateRotation(ControllerWrapper controller) {
