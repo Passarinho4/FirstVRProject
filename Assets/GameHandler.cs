@@ -1,4 +1,8 @@
-﻿using System;
+﻿using System.ComponentModel;
+using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System;
 using System.Data.Common;
 using System.Collections.Specialized;
 using System.Collections;
@@ -9,40 +13,74 @@ using UnityEngine;
 public class GameHandler : MonoBehaviour
 {
 
+    public static int roundNumber = -2; // Minus means tutorial, 0 means first round etc.
+    private float MAX_ROTATION = 25;
     public GameObject RightController;
     public GameObject LeftController;
     public Rigidbody Ball;
-    public TextMesh RightControllerInfo; 
-    public TextMesh LeftControllerInfo;
-    public TextMesh TextButton;
 
-    public GameObject round1Cube;
-    public GameObject round2Cube;
-    public GameObject round3Cube;
+    public GameObject gameCourt1;
+    public GameObject gameCourt2;
+    public GameObject gameCourt3;
+
+    public GameObject gameCourtT1; 
+    public GameObject gameCourtT2;
+
+    public TextMesh rightDebug;
+    public TextMesh leftDebug;
 
     private OrderedDictionary rounds = new OrderedDictionary();
-    private int actualRound = 0;
+    private int actualRound = -2;
+    private GameObject actualGameCourt;
+    private Vector3 gameCourtInitialPosition = new Vector3(0.0f, -4.0f, 7.0f);
 
+    private ControllerWrapper rightControllerWrapper;
+    private ControllerWrapper leftControllerWrapper;
+
+    IEnumerator Game() {
+        actualGameCourt = Instantiate(gameCourt1, gameCourtInitialPosition, Quaternion.identity);
+        resetBall();
+        while (true) {
+            rightDebug.text = rightControllerWrapper.getPosition().ToString();
+            leftDebug.text = leftControllerWrapper.getPosition().ToString();
+
+            updateRotation(rightControllerWrapper);
+            updateRotation(leftControllerWrapper);
+
+            yield return new WaitForSeconds(.05f);
+        }
+    }
+
+    IEnumerator Tutorial() {
+        actualGameCourt = Instantiate(gameCourtT1, gameCourtInitialPosition, Quaternion.identity);
+        while (true) {
+            rightDebug.text = rightControllerWrapper.getPosition().ToString();
+            leftDebug.text = leftControllerWrapper.getPosition().ToString();
+
+            updateRotation(rightControllerWrapper);
+            updateRotation(leftControllerWrapper);
+
+            yield return new WaitForSeconds(.05f);
+        }
+    }
+    
     // Start is called before the first frame update
     void Start()
     {
-        rounds.Add(0, round1Cube);
-        rounds.Add(1, round2Cube);
-        rounds.Add(2, round3Cube);
+        rounds.Add(0, gameCourt1);
+        rounds.Add(1, gameCourt2);
+        rounds.Add(2, gameCourt3);
+
+        rightControllerWrapper = new ControllerWrapper(RightController, "right");
+        leftControllerWrapper = new ControllerWrapper(LeftController, "left");
+
+        StartCoroutine("Tutorial");
+
     }
 
     // Update is called once per frame
     void Update()
     {
-        var rightPosition = RightController.transform.position.y + 0.4f;
-        var leftPosition = LeftController.transform.position.y + 0.4f;
-        RightControllerInfo.text = rightPosition.ToString();
-        LeftControllerInfo.text = leftPosition.ToString();
-
-        ((GameObject)rounds[(object)actualRound]).transform.Rotate(0.0f, 0.0f, 0.3f * rightPosition, Space.Self);
-        ((GameObject)rounds[(object)actualRound]).transform.Rotate(0.3f * leftPosition, 0.0f, 0.0f, Space.Self);
-
-
         var inputDevices = new List<UnityEngine.XR.InputDevice>();
         UnityEngine.XR.InputDevices.GetDevicesWithRole(UnityEngine.XR.InputDeviceRole.RightHanded, inputDevices);
 
@@ -51,12 +89,35 @@ public class GameHandler : MonoBehaviour
         bool triggerValue = false;
         device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out triggerValue);
         if(triggerValue) {
-            TextButton.text = "zajebiście";
             resetBall();
         } else {
-            TextButton.text = "chujowo";
         }
-        checkIfGameOver();
+        if(actualRound >= 0) {
+            checkIfGameOver();
+        } else {
+            checkTutorial();
+        }
+    }
+
+    void checkTutorial() {
+        if(GameHandler.roundNumber != actualRound) {
+            actualRound = GameHandler.roundNumber;
+            Destroy(actualGameCourt);
+
+            if (actualRound == 0) {
+                StopCoroutine("Tutorial");
+                StartCoroutine("Game");
+            } else {
+                actualGameCourt = Instantiate(gameCourtT2, gameCourtInitialPosition, Quaternion.identity);
+                resetBall();
+            }
+        }
+    }
+
+    void updateRotation(ControllerWrapper controller) {
+        if(controller.isRotationAllowed(actualGameCourt.transform.rotation.eulerAngles)) {
+            actualGameCourt.transform.Rotate(controller.getRotationVector(), Space.Self);
+        }
     }
 
     void resetBall() {
@@ -68,15 +129,68 @@ public class GameHandler : MonoBehaviour
     void checkIfGameOver() {
         if (Ball.transform.position.y < -100.0f) {
             nextRound();
-            TextButton.text = "Nastepna runda.";
             resetBall();
         }
     }
 
     void nextRound() {
-        ((GameObject)rounds[(object)actualRound]).transform.position = new Vector3(0.0f, -4.0f, -30.0f);
+        Destroy(actualGameCourt);
         actualRound = (actualRound + 1) % 3; 
-        ((GameObject)rounds[(object)actualRound]).transform.position = new Vector3(0.0f, -4.0f, 7.0f);
+        actualGameCourt = Instantiate(((GameObject)rounds[(object)actualRound]), gameCourtInitialPosition, Quaternion.identity);
     }
 }
 
+public class ControllerWrapper {
+
+    private float MAX_ROTATION = 25;
+    private GameObject controller;
+    private String controllerName;
+    private float rotationStepDeg = 0.3f;
+    
+    public ControllerWrapper(GameObject controller, String controllerName) {
+        this.controller = controller;
+        this.controllerName = controllerName;
+    }
+
+    public ControllerPosition getPosition() {
+        if((controller.transform.position.y + 0.2f) > 0.1) {
+            return ControllerPosition.UP;
+        } else if ((controller.transform.position.y + 0.2f) < -0.1) {
+            return ControllerPosition.DOWN;
+        } else {
+            return ControllerPosition.ZERO;
+        }
+    }
+
+    public float getRotationStep() {
+        return rotationStepDeg;
+    }
+
+    public Vector3 getRotationVector() {
+        if (controllerName == "right") {
+            return new Vector3(0.0f, 0.0f, ((int)getPosition()) * rotationStepDeg);
+        } else {
+            return new Vector3(((int)getPosition()) * rotationStepDeg, 0.0f, 0.0f);
+        }
+    }
+
+    public bool isRotationAllowed(Vector3 actualGameCourtRotation) {
+        if (controllerName == "right") {
+            var newRotation = (actualGameCourtRotation.z + ((int)getPosition()) * getRotationStep());
+            return (newRotation < MAX_ROTATION || (360 - newRotation < MAX_ROTATION));
+        } else {
+            var newRotation = (actualGameCourtRotation.x + ((int)getPosition()) * getRotationStep());
+            return (newRotation < MAX_ROTATION || (360 - newRotation < MAX_ROTATION));
+        }
+    }
+
+
+    
+
+}
+
+public enum ControllerPosition {
+    UP = 1, 
+    ZERO = 0, 
+    DOWN = -1,
+} 
